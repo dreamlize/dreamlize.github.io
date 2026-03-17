@@ -21,6 +21,7 @@ header nav a { margin-left:20px; color:#fff; font-weight:500; }
 //}
 
 .banner h1 { font-size:3rem; margin-bottom:10px; text-align:center}
+.banner h2 { font-size:2rem; text-align:center}
 .banner p { font-size:1.2rem; text-align:center}
 
 section { padding:60px 20px; }
