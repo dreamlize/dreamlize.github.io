@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ETF 포트폴리오 트리맵</title>
+<script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Arial,"Noto Sans KR",sans-serif;background:#f5f7fb;color:#172033}
+header{padding:22px 28px;background:#fff;border-bottom:1px solid #e7eaf0}
+h1{margin:0 0 7px;font-size:24px}.sub{color:#697386;font-size:13px}
+.wrap{max-width:1400px;margin:auto;padding:20px}
+.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px}
+.card{background:#fff;border:1px solid #e7eaf0;border-radius:12px;padding:16px}.label{font-size:12px;color:#758096}.value{font-size:21px;font-weight:700;margin-top:6px}
+.toolbar{display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+button{border:1px solid #d8dde7;background:#fff;border-radius:8px;padding:9px 13px;cursor:pointer}button.active{background:#172033;color:white}
+#status{font-size:12px;color:#697386;margin-left:auto}
+#chart{background:#fff;border:1px solid #e7eaf0;border-radius:12px;overflow:hidden;min-height:620px}
+.tile{stroke:#fff;stroke-width:2;cursor:pointer}.tile:hover{opacity:.82}
+text{pointer-events:none}.account{font-weight:700}.name{font-size:12px;font-weight:700}.detail{font-size:10px}
+table{width:100%;border-collapse:collapse;background:#fff;margin-top:18px;border:1px solid #e7eaf0;border-radius:12px;overflow:hidden;font-size:12px}
+th,td{padding:10px;border-bottom:1px solid #eef0f4;text-align:right}th{text-align:right;background:#f8f9fb}th:first-child,td:first-child{text-align:left}
+.pos{color:#087443}.neg{color:#c43d3d}
+@media(max-width:800px){.cards{grid-template-columns:repeat(2,1fr)}#chart{min-height:500px}.wrap{padding:12px}}
+</style>
+</head>
+<body>
+<header><div class="wrap" style="padding-top:0;padding-bottom:0">
+<h1>ETF 포트폴리오 트리맵</h1><div class="sub">평가금액 기준 · 현재가는 Google Apps Script API에서 갱신</div>
+</div></header>
+<main class="wrap">
+<section class="cards">
+<div class="card"><div class="label">총 평가금액</div><div class="value" id="totalValue">-</div></div>
+<div class="card"><div class="label">총 매수금액</div><div class="value" id="totalCost">-</div></div>
+<div class="card"><div class="label">평가손익</div><div class="value" id="totalProfit">-</div></div>
+<div class="card"><div class="label">수익률</div><div class="value" id="totalRate">-</div></div>
+</section>
+<div class="toolbar">
+<button class="active" data-account="전체">전체</button>
+<button data-account="ISA-한투">ISA-한투</button>
+<button data-account="일반-나무">일반-나무</button>
+<button data-account="연금-한투">연금-한투</button>
+<button id="refresh">현재가 새로고침</button>
+<span id="status">데이터 준비 중...</span>
+</div>
+<div id="chart"></div>
+<table><thead><tr><th>구분</th><th>종목명</th><th>보유수량</th><th>현재가</th><th>평가금액</th><th>평가손익</th><th>수익률</th></tr></thead><tbody id="tbody"></tbody></table>
+</main>
+<script>
+const API_URL = "https://script.google.com/macros/s/AKfycbzbjzTGiAJMlF5k30lHv7IQr7u6RW-HzHavncIr2ukyZzhCzWuQdk0_SwhsdiahTj07/exec";let allData=[], currentAccount="전체";
+const won=n=>Math.round(n).toLocaleString("ko-KR")+"원";
+const pct=n=>(n*100).toFixed(2)+"%";
+
+async function loadData(){
+ document.getElementById("status").textContent="현재가 조회 중...";
+ try{
+   if(API_URL.includes("여기에_")) throw new Error("API_URL을 설정하세요.");
+   const r=await fetch(API_URL+"?t="+Date.now());
+   if(!r.ok) throw new Error("API 응답 오류");
+   const j=await r.json();
+   allData=j.data||[];
+   render();
+   document.getElementById("status").textContent="마지막 갱신: "+new Date().toLocaleString("ko-KR");
+ }catch(e){
+   document.getElementById("status").textContent=e.message;
+ }
+}
+function filtered(){return currentAccount==="전체"?allData:allData.filter(x=>x.구분===currentAccount)}
+function render(){
+ const d=filtered();
+ d.forEach(x=>{x.평가금액=x.보유주식수*x.현재가;x.수익금액=x.평가금액-x.총매수금액;x.수익률=x.총매수금액?x.수익금액/x.총매수금액:0});
+ const cost=d.reduce((a,x)=>a+x.총매수금액,0), val=d.reduce((a,x)=>a+x.평가금액,0), profit=val-cost;
+ document.getElementById("totalCost").textContent=won(cost);
+ document.getElementById("totalValue").textContent=won(val);
+ document.getElementById("totalProfit").textContent=(profit>=0?"+":"")+won(profit);
+ document.getElementById("totalRate").textContent=pct(cost?profit/cost:0);
+ drawTree(d); drawTable(d);
+}
+function color(rate){
+ const t=Math.max(-.3,Math.min(.3,rate));
+ return t>=0 ? `hsl(145,${45+Math.abs(t)*100}%,${82-Math.abs(t)*45}%)`
+              : `hsl(355,${45+Math.abs(t)*100}%,${86-Math.abs(t)*45}%)`;
+}
+function drawTree(data){
+ const box=document.getElementById("chart"); box.innerHTML="";
+ const w=box.clientWidth||1000,h=Math.max(620,Math.min(760,w*.58));
+ const root=d3.hierarchy({children:[
+   ...d3.groups(data,d=>d.구분).map(([k,v])=>({name:k,children:v}))
+ ]}).sum(d=>d.평가금액||0).sort((a,b)=>b.value-a.value);
+ d3.treemap().size([w,h]).paddingOuter(5).paddingTop(24).paddingInner(3)(root);
+ const svg=d3.select(box).append("svg").attr("width","100%").attr("viewBox",`0 0 ${w} ${h}`);
+ const g=svg.selectAll("g").data(root.leaves()).join("g").attr("transform",d=>`translate(${d.x0},${d.y0})`);
+ g.append("rect").attr("class","tile").attr("width",d=>Math.max(0,d.x1-d.x0)).attr("height",d=>Math.max(0,d.y1-d.y0)).attr("fill",d=>color(d.data.수익률))
+ .append("title").text(d=>`${d.data.종목명}\n평가금액 ${won(d.data.평가금액)}\n수익률 ${pct(d.data.수익률)}`);
+ g.append("text").attr("class","name").attr("x",6).attr("y",17).text(d=>d.data.종목명)
+ .each(function(d){if(d.x1-d.x0<100)d3.select(this).text("")});
+ g.append("text").attr("class","detail").attr("x",6).attr("y",34).text(d=>d.x1-d.x0>120?won(d.data.평가금액):"");
+ // account labels
+ svg.selectAll(".acct").data(root.children||[]).join("text").attr("class","account").attr("x",d=>d.x0+6).attr("y",d=>d.y0+16).text(d=>d.data.name);
+}
+function drawTable(data){
+ document.getElementById("tbody").innerHTML=data.map(x=>`<tr>
+ <td>${x.구분}</td><td>${x.종목명}</td><td>${x.보유주식수.toLocaleString()}</td>
+ <td>${x.현재가.toLocaleString()}</td><td>${won(x.평가금액)}</td>
+ <td class="${x.수익금액>=0?'pos':'neg'}">${x.수익금액>=0?'+':''}${won(x.수익금액)}</td>
+ <td class="${x.수익률>=0?'pos':'neg'}">${pct(x.수익률)}</td></tr>`).join("");
+}
+document.querySelectorAll("[data-account]").forEach(b=>b.onclick=()=>{document.querySelectorAll("[data-account]").forEach(x=>x.classList.remove("active"));b.classList.add("active");currentAccount=b.dataset.account;render()});
+document.getElementById("refresh").onclick=loadData;
+window.addEventListener("resize",render);
+loadData();
+</script>
+</body></html>
