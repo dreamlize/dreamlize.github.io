@@ -26,7 +26,7 @@ th,td{padding:10px;border-bottom:1px solid #eef0f4;text-align:right}th{text-alig
 </head>
 <body>
 <header><div class="wrap" style="padding-top:0;padding-bottom:0">
-<h1>ETF 포트폴리오 트리맵</h1><div class="sub">평가금액 기준 · 현재가는 Google Apps Script API에서 갱신</div>
+<h1>ETF 포트폴리오 트리맵</h1>
 </div></header>
 <main class="wrap">
 <section class="cards">
@@ -44,7 +44,7 @@ th,td{padding:10px;border-bottom:1px solid #eef0f4;text-align:right}th{text-alig
 <span id="status">데이터 준비 중...</span>
 </div>
 <div id="chart"></div>
-<table><thead><tr><th>구분</th><th>종목명</th><th>보유수량</th><th>현재가</th><th>평가금액</th><th>평가손익</th><th>수익률</th></tr></thead><tbody id="tbody"></tbody></table>
+<table><thead><tr><th>구분</th><th>종목명</th><th>보유수량</th><th>매수단가</th><th>총매수금액</th><th>현재가</th><th>평가금액</th><th>평가손익</th><th>수익률</th></tr></thead><tbody id="tbody"></tbody></table>
 </main>
 <script>
 const API_URL = "https://script.google.com/macros/s/AKfycbzbjzTGiAJMlF5k30lHv7IQr7u6RW-HzHavncIr2ukyZzhCzWuQdk0_SwhsdiahTj07/exec";let allData=[], currentAccount="전체";
@@ -99,11 +99,12 @@ function drawTree(data){
  svg.selectAll(".acct").data(root.children||[]).join("text").attr("class","account").attr("x",d=>d.x0+6).attr("y",d=>d.y0+16).text(d=>d.data.name);
 }
 function drawTable(data){
- document.getElementById("tbody").innerHTML=data.map(x=>`<tr>
- <td>${x.구분}</td><td>${x.종목명}</td><td>${x.보유주식수.toLocaleString()}</td>
- <td>${x.현재가.toLocaleString()}</td><td>${won(x.평가금액)}</td>
- <td class="${x.수익금액>=0?'pos':'neg'}">${x.수익금액>=0?'+':''}${won(x.수익금액)}</td>
- <td class="${x.수익률>=0?'pos':'neg'}">${pct(x.수익률)}</td></tr>`).join("");
+  document.getElementById("tbody").innerHTML=data.map(x=>`<tr>
+  <td>${x.구분}</td><td>${x.종목명}</td><td>${x.보유주식수.toLocaleString()}</td>
+  <td>${Math.round(x.총매수금액/x.보유주식수).toLocaleString()}</td><td>${won(x.총매수금액)}</td>
+  <td>${x.현재가.toLocaleString()}</td><td>${won(x.평가금액)}</td>
+  <td class="${x.수익금액>=0?'pos':'neg'}">${x.수익금액>=0?'+':''}${won(x.수익금액)}</td>
+  <td class="${x.수익률>=0?'pos':'neg'}">${pct(x.수익률)}</td></tr>`).join("");
 }
 document.querySelectorAll("[data-account]").forEach(b=>b.onclick=()=>{document.querySelectorAll("[data-account]").forEach(x=>x.classList.remove("active"));b.classList.add("active");currentAccount=b.dataset.account;render()});
 document.getElementById("refresh").onclick=loadData;
