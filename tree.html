@@ -40,11 +40,12 @@ th,td{padding:10px;border-bottom:1px solid #eef0f4;text-align:right}th{text-alig
 <button data-account="ISA-한투">ISA-한투</button>
 <button data-account="일반-나무">일반-나무</button>
 <button data-account="연금-한투">연금-한투</button>
+<button data-account="전일대비">전일대비</button>
 <button id="refresh">현재가 새로고침</button>
 <span id="status">데이터 준비 중...</span>
 </div>
 <div id="chart"></div>
-<table><thead><tr><th>구분</th><th>종목명</th><th>보유수량</th><th>매수단가</th><th>총매수금액</th><th>현재가</th><th>평가금액</th><th>평가손익</th><th>수익률</th></tr></thead><tbody id="tbody"></tbody></table>
+<table><thead><tr><th>구분</th><th>종목명</th><th>보유수량</th><th>매수단가</th><th>총매수금액</th><th>현재가</th><th>평가금액</th><th>평가손익</th><th>수익률</th><th>전일대비</th><th>전일대비등락률</th></tr></thead><tbody id="tbody"></tbody></table>
 </main>
 <script>
 const API_URL = "https://script.google.com/macros/s/AKfycbzbjzTGiAJMlF5k30lHv7IQr7u6RW-HzHavncIr2ukyZzhCzWuQdk0_SwhsdiahTj07/exec";let allData=[], currentAccount="전체";
@@ -65,9 +66,32 @@ async function loadData(){
    document.getElementById("status").textContent=e.message;
  }
 }
-function filtered(){return currentAccount==="전체"?allData:allData.filter(x=>x.구분===currentAccount)}
+function filtered(){
+  if(currentAccount==="전체") return allData;
+
+  if(currentAccount==="전일대비"){
+    return allData;
+  }
+
+  return allData.filter(x=>x.구분===currentAccount);
+}
 function render(){
  const d=filtered();
+ // 전일대비 메뉴에서는 전일 등락률 기준으로 표시
+if(currentAccount==="전일대비"){
+  allData.forEach(x=>{
+    const previousClose=Number(x.전일종가)||0;
+    const currentPrice=Number(x.현재가)||0;
+
+    x.전일대비=Number(x.전일대비)||
+      (previousClose>0?currentPrice-previousClose:0);
+
+    x.전일대비등락률=
+      previousClose>0
+        ? (currentPrice-previousClose)/previousClose
+        : Number(x.전일대비등락률)||0;
+  });
+}	
  d.forEach(x=>{x.평가금액=x.보유주식수*x.현재가;x.수익금액=x.평가금액-x.총매수금액;x.수익률=x.총매수금액?x.수익금액/x.총매수금액:0});
  const cost=d.reduce((a,x)=>a+x.총매수금액,0), val=d.reduce((a,x)=>a+x.평가금액,0), profit=val-cost;
  document.getElementById("totalCost").textContent=won(cost);
@@ -90,8 +114,18 @@ function drawTree(data){
  d3.treemap().size([w,h]).paddingOuter(5).paddingTop(24).paddingInner(3)(root);
  const svg=d3.select(box).append("svg").attr("width","100%").attr("viewBox",`0 0 ${w} ${h}`);
  const g=svg.selectAll("g").data(root.leaves()).join("g").attr("transform",d=>`translate(${d.x0},${d.y0})`);
- g.append("rect").attr("class","tile").attr("width",d=>Math.max(0,d.x1-d.x0)).attr("height",d=>Math.max(0,d.y1-d.y0)).attr("fill",d=>color(d.data.수익률))
- .append("title").text(d=>`${d.data.종목명}\n평가금액 ${won(d.data.평가금액)}\n수익률 ${pct(d.data.수익률)}`);
+ g.append("rect").attr("class","tile").attr("width",d=>Math.max(0,d.x1-d.x0)).attr("height",d=>Math.max(0,d.y1-d.y0)).attr("fill",d=>color(
+  currentAccount==="전일대비"
+    ? (Number(d.data.전일대비등락률)||0)
+    : (Number(d.data.수익률)||0)
+))
+.append("title").text(d=>
+  `${d.data.종목명}\n`+
+  `평가금액 ${won(d.data.평가금액)}\n`+
+  (currentAccount==="전일대비"
+    ? `전일대비 ${won(d.data.전일대비||0)}\n전일대비등락률 ${pct(d.data.전일대비등락률||0)}`
+    : `수익률 ${pct(d.data.수익률||0)}`)
+);
  g.append("text").attr("class","name").attr("x",6).attr("y",17).text(d=>d.data.종목명)
  .each(function(d){if(d.x1-d.x0<100)d3.select(this).text("")});
  g.append("text").attr("class","detail").attr("x",6).attr("y",34).text(d=>d.x1-d.x0>120?won(d.data.평가금액):"");
@@ -99,14 +133,31 @@ function drawTree(data){
  svg.selectAll(".acct").data(root.children||[]).join("text").attr("class","account").attr("x",d=>d.x0+6).attr("y",d=>d.y0+16).text(d=>d.data.name);
 }
 function drawTable(data){
-  document.getElementById("tbody").innerHTML=data.map(x=>`<tr>
-  <td>${x.구분}</td><td>${x.종목명}</td><td>${x.보유주식수.toLocaleString()}</td>
-  <td>${Math.round(x.총매수금액/x.보유주식수).toLocaleString()}</td><td>${won(x.총매수금액)}</td>
-  <td>${x.현재가.toLocaleString()}</td><td>${won(x.평가금액)}</td>
-  <td class="${x.수익금액>=0?'pos':'neg'}">${x.수익금액>=0?'+':''}${won(x.수익금액)}</td>
-  <td class="${x.수익률>=0?'pos':'neg'}">${pct(x.수익률)}</td></tr>`).join("");
-}
-document.querySelectorAll("[data-account]").forEach(b=>b.onclick=()=>{document.querySelectorAll("[data-account]").forEach(x=>x.classList.remove("active"));b.classList.add("active");currentAccount=b.dataset.account;render()});
+  document.getElementById("tbody").innerHTML=data.map(x=>{
+    const qty=Number(x.보유주식수)||0;
+    const cost=Number(x.총매수금액)||0;
+    const price=Number(x.현재가)||0;
+    const value=Number(x.평가금액)||0;
+    const profit=Number(x.수익금액)||0;
+    const rate=Number(x.수익률)||0;
+    const change=Number(x.전일대비)||0;
+    const changeRate=Number(x.전일대비등락률)||0;
+
+    return `<tr>
+      <td>${x.구분}</td>
+      <td>${x.종목명}</td>
+      <td>${qty.toLocaleString()}</td>
+      <td>${qty?Math.round(cost/qty).toLocaleString():"-"}</td>
+      <td>${won(cost)}</td>
+      <td>${price.toLocaleString()}</td>
+      <td>${won(value)}</td>
+      <td class="${profit>=0?'pos':'neg'}">${profit>=0?'+':''}${won(profit)}</td>
+      <td class="${rate>=0?'pos':'neg'}">${pct(rate)}</td>
+      <td class="${change>=0?'pos':'neg'}">${change>=0?'+':''}${won(change)}</td>
+      <td class="${changeRate>=0?'pos':'neg'}">${pct(changeRate)}</td>
+    </tr>`;
+  }).join("");
+}document.querySelectorAll("[data-account]").forEach(b=>b.onclick=()=>{document.querySelectorAll("[data-account]").forEach(x=>x.classList.remove("active"));b.classList.add("active");currentAccount=b.dataset.account;render()});
 document.getElementById("refresh").onclick=loadData;
 window.addEventListener("resize",render);
 loadData();
